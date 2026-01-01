@@ -118,26 +118,7 @@ int chip8_load_rom(Chip8* chip8, const char* filename) {
     return 1;  // 成功
 }
 
-// 在chip8.c中添加
-void chip8_load_test_program(Chip8* chip8) {
-    // 测试程序: 清屏 → 设置寄存器 → 相加 → 循环
-    unsigned char test_program[] = {
-        0x00, 0xE0,  // CLS
-        0x60, 0x02,  // LD V0, 0x02
-        0x61, 0x03,  // LD V1, 0x03
-        0x80, 0x14,  // ADD V0, V1  (V0 = 5)
-        0xF0, 0x29,  // LD F, V0    (设置I为字体地址)
-        0xD0, 0x15,  // DRW V0, V1, 5 (绘制)
-        0x12, 0x00   // JP 0x200
-    };
-    
-    memcpy(&chip8->memory[PROGRAM_START], 
-           test_program, 
-           sizeof(test_program));
-    
-    printf("加载内置测试程序 (%zu字节)\n", sizeof(test_program));
-}
-
+// CPU单周期执行
 void chip8_cycle(Chip8* chip8) {
     if (!chip8) return;
 
@@ -207,5 +188,19 @@ void chip8_cycle(Chip8* chip8) {
             printf("  尚未实现的操作码: 0x%04X\n", opcode);
             chip8->pc += 2; // 即使未实现，也前进PC以避免死循环
             break;
+    }
+}
+
+// 更新定时器 (每秒60次调用.)
+void chip8_update_timers(Chip8* chip8) {
+    if (chip8->delay_timer > 0) {
+        chip8->delay_timer--;
+    }
+    
+    if (chip8->sound_timer > 0) {
+        if (chip8->sound_timer == 1) {
+            printf("BEEP! 播放提示音\n");
+        }
+        chip8->sound_timer--;
     }
 }

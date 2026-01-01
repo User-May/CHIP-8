@@ -3,43 +3,43 @@
 
 #include <stdint.h>
 
-// å†…å­˜å¤§å° - 4KB (4096 bytes)
+// ÄÚ´æ´óĞ¡ - 4KB (4096 bytes)
 #define MEMORY_SIZE 4096
-#define PROGRAM_START 0x200  // CHIP-8ç¨‹åºèµ·å§‹åœ°å€
-#define DISPLAY_WIDTH 64     // æ˜¾ç¤ºå®½åº¦
-#define DISPLAY_HEIGHT 32    // æ˜¾ç¤ºé«˜åº¦
+#define PROGRAM_START 0x200  // CHIP-8³ÌĞòÆğÊ¼µØÖ·
+#define DISPLAY_WIDTH 64     // ÏÔÊ¾¿í¶È
+#define DISPLAY_HEIGHT 32    // ÏÔÊ¾¸ß¶È
 
-// CPUç»“æ„ä½“
+// CPU½á¹¹Ìå
 typedef struct {
-    // å†…å­˜
+    // ÄÚ´æ
     uint8_t memory[MEMORY_SIZE];
     
-    // å¯„å­˜å™¨
-    uint8_t V[16];            // 16ä¸ª8ä½é€šç”¨å¯„å­˜å™¨ (V0-VF)
-    uint16_t I;               // 16ä½åœ°å€å¯„å­˜å™¨
-    uint16_t pc;              // ç¨‹åºè®¡æ•°å™¨
+    // ¼Ä´æÆ÷
+    uint8_t V[16];            // 16¸ö8Î»Í¨ÓÃ¼Ä´æÆ÷ (V0-VF)
+    uint16_t I;               // 16Î»µØÖ·¼Ä´æÆ÷
+    uint16_t pc;              // ³ÌĞò¼ÆÊıÆ÷
     
-    // å †æ ˆ
-    uint16_t stack[16];       // 16å±‚å †æ ˆ
-    uint8_t sp;               // å †æ ˆæŒ‡é’ˆ
+    // ¶ÑÕ»
+    uint16_t stack[16];       // 16²ã¶ÑÕ»
+    uint8_t sp;               // ¶ÑÕ»Ö¸Õë
     
-    // å®šæ—¶å™¨
-    uint8_t delay_timer;      // å»¶è¿Ÿå®šæ—¶å™¨
-    uint8_t sound_timer;      // å£°éŸ³å®šæ—¶å™¨
+    // ¶¨Ê±Æ÷
+    uint8_t delay_timer;      // ÑÓ³Ù¶¨Ê±Æ÷
+    uint8_t sound_timer;      // ÉùÒô¶¨Ê±Æ÷
     
-    // æ˜¾ç¤º
-    uint8_t display[DISPLAY_WIDTH * DISPLAY_HEIGHT];  // åƒç´ ç¼“å†²åŒº (0=å…³, 1=å¼€)
+    // ÏÔÊ¾
+    uint8_t display[DISPLAY_WIDTH * DISPLAY_HEIGHT];  // ÏñËØ»º³åÇø (0=¹Ø, 1=¿ª)
     
-    // é”®ç›˜è¾“å…¥ (16é”®: 0-9, A-F)
+    // ¼üÅÌÊäÈë (16¼ü: 0-9, A-F)
     uint8_t key[16];
     
-    // çŠ¶æ€æ ‡å¿—
-    uint8_t draw_flag;        // éœ€è¦é‡ç»˜æ˜¾ç¤º
-    uint8_t key_wait;         // ç­‰å¾…æŒ‰é”®æŒ‰ä¸‹
-    uint8_t key_reg;          // ç­‰å¾…æŒ‰é”®çš„å¯„å­˜å™¨
+    // ×´Ì¬±êÖ¾
+    uint8_t draw_flag;        // ĞèÒªÖØ»æÏÔÊ¾
+    uint8_t key_wait;         // µÈ´ı°´¼ü°´ÏÂ
+    uint8_t key_reg;          // µÈ´ı°´¼üµÄ¼Ä´æÆ÷
 } Chip8;
 
-// å‡½æ•°å£°æ˜
+// º¯ÊıÉùÃ÷
 void chip8_init(Chip8* chip8);
 int chip8_load_rom(Chip8* chip8, const char* filename);
 void chip8_cycle(Chip8* chip8);
