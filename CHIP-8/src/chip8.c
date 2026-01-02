@@ -204,3 +204,97 @@ void chip8_update_timers(Chip8* chip8) {
         chip8->sound_timer--;
     }
 }
+
+// 初始化SDL2图形系统
+int chip8_graphics_init(Chip8* chip8) {
+    if (!chip8) return 0;
+    
+    // 1. 初始化SDL2视频子系统
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        fprintf(stderr, "SDL2初始化失败: %s\n", SDL_GetError());
+        return 0;
+    }
+    
+    // 2. 创建窗口
+    chip8->window = SDL_CreateWindow(
+        "CHIP-8",               // 窗口标题
+        SDL_WINDOWPOS_CENTERED,        // 初始X位置
+        SDL_WINDOWPOS_CENTERED,        // 初始Y位置
+        WINDOW_WIDTH,                  // 窗口宽度
+        WINDOW_HEIGHT,                 // 窗口高度
+        SDL_WINDOW_SHOWN               // 显示窗口标志
+    );
+    
+    if (!chip8->window) {
+        fprintf(stderr, "创建窗口失败: %s\n", SDL_GetError());
+        SDL_Quit();
+        return 0;
+    }
+    
+    // 3. 创建渲染器（用于绘制）
+    chip8->renderer = SDL_CreateRenderer(
+        chip8->window,
+        -1,                            // 使用第一个可用的渲染驱动
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+    );
+    
+    if (!chip8->renderer) {
+        fprintf(stderr, "创建渲染器失败: %s\n", SDL_GetError());
+        SDL_DestroyWindow(chip8->window);
+        SDL_Quit();
+        return 0;
+    }
+    
+    printf("图形系统初始化成功 (窗口: %dx%d)\n", WINDOW_WIDTH, WINDOW_HEIGHT);
+    return 1;
+}
+
+// 更新图形显示：将display数组中的像素绘制到窗口
+void chip8_graphics_update(Chip8* chip8) {
+    if (!chip8 || !chip8->renderer) return;
+    
+    // 1. 设置绘制颜色为黑色（背景）
+    SDL_SetRenderDrawColor(chip8->renderer, 0, 0, 0, 255); // 黑色背景
+    SDL_RenderClear(chip8->renderer); // 清屏
+    
+    // 2. 设置绘制颜色为白色（前景/像素）
+    SDL_SetRenderDrawColor(chip8->renderer, 255, 255, 255, 255); // 白色像素
+    
+    // 3. 遍历CHIP-8的显示缓冲区(64x32)，将“点亮”的像素绘制到窗口
+    for (int y = 0; y < DISPLAY_HEIGHT; y++) {
+        for (int x = 0; x < DISPLAY_WIDTH; x++) {
+            // 如果该像素为“开”(值为1)
+            if (chip8->display[y * DISPLAY_WIDTH + x]) {
+                // 计算放大后的矩形位置和大小
+                SDL_Rect pixel_rect = {
+                    x * WINDOW_SCALE,      // 放大后的X坐标
+                    y * WINDOW_SCALE,      // 放大后的Y坐标
+                    WINDOW_SCALE,          // 像素宽度
+                    WINDOW_SCALE           // 像素高度
+                };
+                // 绘制一个实心矩形代表一个放大的像素
+                SDL_RenderFillRect(chip8->renderer, &pixel_rect);
+            }
+        }
+    }
+    
+    // 4. 将渲染结果提交到屏幕
+    SDL_RenderPresent(chip8->renderer);
+}
+
+// 清理图形资源
+void chip8_graphics_cleanup(Chip8* chip8) {
+    if (!chip8) return;
+    
+    if (chip8->renderer) {
+        SDL_DestroyRenderer(chip8->renderer);
+        chip8->renderer = NULL;
+    }
+    if (chip8->window) {
+        SDL_DestroyWindow(chip8->window);
+        chip8->window = NULL;
+    }
+    
+    SDL_Quit();
+    printf("图形资源已清理\n");
+}
