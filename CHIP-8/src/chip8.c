@@ -97,101 +97,489 @@ int chip8_load_rom(Chip8* chip8, const char* filename) {
     }
     
     // 读取ROM到内存
-    size_t bytes_read = fread(&chip8->memory[PROGRAM_START], 
-                              sizeof(uint8_t), 
-                              file_size, 
-                              file);
+    size_t bytes_read = fread(&chip8->memory[PROGRAM_START],sizeof(uint8_t),file_size,file);
     fclose(file);
     
     if (bytes_read != (size_t)file_size) {
-        fprintf(stderr, "错误: 读取ROM不完整 (读取 %zu字节，预期 %ld字节)\n", 
-                bytes_read, file_size);
+        fprintf(stderr,"错误: 读取ROM不完整 (读取 %zu字节，预期 %ld字节)\n",bytes_read, file_size);
         return 0;
     }
     
     printf("成功加载ROM: %s\n", filename);
     printf("文件大小: %ld字节\n", file_size);
-    printf("加载到内存地址: 0x%03X-0x%03X\n", 
-           PROGRAM_START, 
-           PROGRAM_START + (uint16_t)file_size - 1);
-    
+    printf("加载到内存地址: 0x%03X-0x%03X\n",PROGRAM_START, PROGRAM_START + (uint16_t)file_size - 1);
     return 1;  // 成功
 }
 
-// CPU单周期执行
+// CPU单周期执行：取指、解码、执行
 void chip8_cycle(Chip8* chip8) {
     if (!chip8) return;
 
     // 1. 取指 (Fetch): 从当前PC位置读取一个16位的操作码
-    // CHIP-8的操作码是大端序，高字节在前
     uint16_t opcode = (chip8->memory[chip8->pc] << 8) | chip8->memory[chip8->pc + 1];
     
     // 调试：打印当前执行信息
     printf("[执行] PC=0x%03X, Opcode=0x%04X\n", chip8->pc, opcode);
 
-    // 2. 解码与执行 (Decode & Execute)
-    // 先通过操作码的高位（第一个16进制数字）判断指令类型
-    switch (opcode & 0xF000) { // 掩码 0xF000 用于取高4位
+    // 2. 解码与执行
+    switch (opcode & 0xF000) {
+        // ============ 0xxx: 特殊指令 ============
         case 0x0000:
-            // 以0开头的指令 (如 00E0, 00EE)
             switch (opcode) {
                 case 0x00E0: // 00E0: 清屏 (CLS)
                     printf("  执行: 00E0 (清屏)\n");
-                    // 清空显示缓冲区
                     memset(chip8->display, 0, sizeof(chip8->display));
-                    chip8->draw_flag = 1; // 标记需要更新屏幕
-                    chip8->pc += 2; // PC前进
+                    chip8->draw_flag = 1;
+                    chip8->pc += 2;
                     break;
+                    
                 case 0x00EE: // 00EE: 从子程序返回 (RET)
                     printf("  执行: 00EE (返回)\n");
-                    // 后续实现堆栈逻辑
+                    // 堆栈逻辑：从堆栈弹出地址
+                    if (chip8->sp > 0) {
+                        chip8->sp--;
+                        chip8->pc = chip8->stack[chip8->sp];
+                    } else {
+                        printf("  警告: 堆栈下溢!\n");
+                        chip8->pc += 2;
+                    }
+                    break;
+                    
+                default:
+                    // SYS addr - 现代模拟器通常忽略
+                    printf("  执行: SYS 0x%03X (忽略)\n", opcode & 0x0FFF);
                     chip8->pc += 2;
                     break;
-                default:
-                    printf("  未知的0指令: 0x%04X\n", opcode);
-                    chip8->pc += 2;
             }
             break;
 
+        // ============ 1xxx: 跳转 ============
         case 0x1000: // 1NNN: 跳转到地址 NNN (JP NNN)
             {
-                uint16_t address = opcode & 0x0FFF; // 取后12位作为地址
+                uint16_t address = opcode & 0x0FFF;
                 printf("  执行: 1NNN (跳转到 0x%03X)\n", address);
-                chip8->pc = address; // 直接设置PC，注意这里不加2
+                chip8->pc = address; // 直接设置PC，不加2
             }
             break;
 
+        // ============ 2xxx: 调用子程序 ============
+        case 0x2000: // 2NNN: 调用子程序 (CALL NNN)
+            {
+                uint16_t address = opcode & 0x0FFF;
+                printf("  执行: 2NNN (调用子程序 0x%03X)\n", address);
+                
+                // 将返回地址压栈
+                if (chip8->sp < 16) {
+                    chip8->stack[chip8->sp] = chip8->pc + 2;
+                    chip8->sp++;
+                    chip8->pc = address;
+                } else {
+                    printf("  警告: 堆栈溢出!\n");
+                    chip8->pc += 2;
+                }
+            }
+            break;
+
+        // ============ 3xxx: 条件跳过 ============
+        case 0x3000: // 3XNN: 如果 VX == NN 则跳过 (SE Vx, byte)
+            {
+                uint8_t x = (opcode & 0x0F00) >> 8;
+                uint8_t nn = opcode & 0x00FF;
+                printf("  执行: 3XNN (如果 V%X==0x%02X 则跳过)\n", x, nn);
+                
+                if (chip8->V[x] == nn) {
+                    chip8->pc += 4;  // 跳过下一条指令
+                } else {
+                    chip8->pc += 2;  // 正常前进
+                }
+            }
+            break;
+
+        // ============ 4xxx: 条件跳过 ============
+        case 0x4000: // 4XNN: 如果 VX != NN 则跳过 (SNE Vx, byte)
+            {
+                uint8_t x = (opcode & 0x0F00) >> 8;
+                uint8_t nn = opcode & 0x00FF;
+                printf("  执行: 4XNN (如果 V%X!=0x%02X 则跳过)\n", x, nn);
+                
+                if (chip8->V[x] != nn) {
+                    chip8->pc += 4;
+                } else {
+                    chip8->pc += 2;
+                }
+            }
+            break;
+
+        // ============ 5xxx: 条件跳过 ============
+        case 0x5000: // 5XY0: 如果 VX == VY 则跳过 (SE Vx, Vy)
+            {
+                uint8_t x = (opcode & 0x0F00) >> 8;
+                uint8_t y = (opcode & 0x00F0) >> 4;
+                printf("  执行: 5XY0 (如果 V%X==V%X 则跳过)\n", x, y);
+                
+                if (chip8->V[x] == chip8->V[y]) {
+                    chip8->pc += 4;
+                } else {
+                    chip8->pc += 2;
+                }
+            }
+            break;
+
+        // ============ 6xxx: 设置寄存器 ============
         case 0x6000: // 6XNN: 将常数NN存入寄存器VX (LD Vx, byte)
             {
-                uint8_t x = (opcode & 0x0F00) >> 8; // 取寄存器索引
-                uint8_t nn = opcode & 0x00FF; // 取常数
+                uint8_t x = (opcode & 0x0F00) >> 8;
+                uint8_t nn = opcode & 0x00FF;
                 printf("  执行: 6XNN (设置 V%X = 0x%02X)\n", x, nn);
                 chip8->V[x] = nn;
                 chip8->pc += 2;
             }
             break;
 
-        case 0x8000: // 8XY4: 将VY加到VX，VF作为进位标志 (ADD Vx, Vy)
+        // ============ 7xxx: 加法 ============
+        case 0x7000: // 7XNN: VX = VX + NN (ADD Vx, byte)
             {
                 uint8_t x = (opcode & 0x0F00) >> 8;
-                uint8_t y = (opcode & 0x00F0) >> 4;
-                printf("  执行: 8XY4 (V%X = V%X + V%X)\n", x, x, y);
-                
-                uint16_t sum = chip8->V[x] + chip8->V[y];
-                chip8->V[0xF] = (sum > 0xFF) ? 1 : 0; // 设置进位标志
-                chip8->V[x] = sum & 0xFF; // 保留低8位
+                uint8_t nn = opcode & 0x00FF;
+                printf("  执行: 7XNN (V%X = V%X + 0x%02X)\n", x, x, nn);
+                chip8->V[x] += nn;
                 chip8->pc += 2;
             }
             break;
 
+        // ============ 8xxx: 算术与逻辑 ============
+        case 0x8000:
+            {
+                uint8_t x = (opcode & 0x0F00) >> 8;
+                uint8_t y = (opcode & 0x00F0) >> 4;
+                
+                switch (opcode & 0x000F) {
+                    case 0x0000: // 8XY0: VX = VY (LD Vx, Vy)
+                        printf("  执行: 8XY0 (V%X = V%X)\n", x, y);
+                        chip8->V[x] = chip8->V[y];
+                        chip8->pc += 2;
+                        break;
+                        
+                    case 0x0001: // 8XY1: VX = VX OR VY (OR Vx, Vy)
+                        printf("  执行: 8XY1 (V%X = V%X | V%X)\n", x, x, y);
+                        chip8->V[x] |= chip8->V[y];
+                        chip8->pc += 2;
+                        break;
+                        
+                    case 0x0002: // 8XY2: VX = VX AND VY (AND Vx, Vy)
+                        printf("  执行: 8XY2 (V%X = V%X & V%X)\n", x, x, y);
+                        chip8->V[x] &= chip8->V[y];
+                        chip8->pc += 2;
+                        break;
+                        
+                    case 0x0003: // 8XY3: VX = VX XOR VY (XOR Vx, Vy)
+                        printf("  执行: 8XY3 (V%X = V%X ^ V%X)\n", x, x, y);
+                        chip8->V[x] ^= chip8->V[y];
+                        chip8->pc += 2;
+                        break;
+                        
+                    case 0x0004: // 8XY4: VX = VX + VY (ADD Vx, Vy)
+                        printf("  执行: 8XY4 (V%X = V%X + V%X)\n", x, x, y);
+                        {
+                            uint16_t sum = chip8->V[x] + chip8->V[y];
+                            chip8->V[0xF] = (sum > 0xFF) ? 1 : 0;
+                            chip8->V[x] = sum & 0xFF;
+                        }
+                        chip8->pc += 2;
+                        break;
+                        
+                    case 0x0005: // 8XY5: VX = VX - VY (SUB Vx, Vy)
+                        printf("  执行: 8XY5 (V%X = V%X - V%X)\n", x, x, y);
+                        chip8->V[0xF] = (chip8->V[x] >= chip8->V[y]) ? 1 : 0;
+                        chip8->V[x] -= chip8->V[y];
+                        chip8->pc += 2;
+                        break;
+                        
+                    case 0x0006: // 8XY6: VX = VX >> 1 (SHR Vx)
+                        printf("  执行: 8XY6 (V%X = V%X >> 1)\n", x, x);
+                        chip8->V[0xF] = chip8->V[x] & 0x01;
+                        chip8->V[x] >>= 1;
+                        chip8->pc += 2;
+                        break;
+                        
+                    case 0x0007: // 8XY7: VX = VY - VX (SUBN Vx, Vy)
+                        printf("  执行: 8XY7 (V%X = V%X - V%X)\n", x, y, x);
+                        chip8->V[0xF] = (chip8->V[y] >= chip8->V[x]) ? 1 : 0;
+                        chip8->V[x] = chip8->V[y] - chip8->V[x];
+                        chip8->pc += 2;
+                        break;
+                        
+                    case 0x000E: // 8XYE: VX = VX << 1 (SHL Vx)
+                        printf("  执行: 8XYE (V%X = V%X << 1)\n", x, x);
+                        chip8->V[0xF] = (chip8->V[x] & 0x80) >> 7;
+                        chip8->V[x] <<= 1;
+                        chip8->pc += 2;
+                        break;
+                        
+                    default:
+                        printf("  未实现的8指令: 0x%04X\n", opcode);
+                        chip8->pc += 2;
+                        break;
+                }
+            }
+            break;
+
+        // ============ 9xxx: 条件跳过 ============
+        case 0x9000: // 9XY0: 如果 VX != VY 则跳过 (SNE Vx, Vy)
+            {
+                uint8_t x = (opcode & 0x0F00) >> 8;
+                uint8_t y = (opcode & 0x00F0) >> 4;
+                printf("  执行: 9XY0 (如果 V%X!=V%X 则跳过)\n", x, y);
+                
+                if (chip8->V[x] != chip8->V[y]) {
+                    chip8->pc += 4;
+                } else {
+                    chip8->pc += 2;
+                }
+            }
+            break;
+
+        // ============ Axxx: 设置索引寄存器 ============
+        case 0xA000: // ANNN: 设置I寄存器 (LD I, addr)
+            {
+                uint16_t address = opcode & 0x0FFF;
+                printf("  执行: ANNN (设置 I = 0x%03X)\n", address);
+                chip8->I = address;
+                chip8->pc += 2;
+            }
+            break;
+
+        // ============ Bxxx: 跳转 ============
+        case 0xB000: // BNNN: 跳转到地址 NNN + V0 (JP V0, addr)
+            {
+                uint16_t address = opcode & 0x0FFF;
+                printf("  执行: BNNN (跳转到 0x%03X + V0)\n", address);
+                chip8->pc = address + chip8->V[0];
+            }
+            break;
+
+        // ============ Cxxx: 随机数 ============
+        case 0xC000: // CXNN: VX = 随机数 & NN (RND Vx, byte)
+            {
+                uint8_t x = (opcode & 0x0F00) >> 8;
+                uint8_t nn = opcode & 0x00FF;
+                printf("  执行: CXNN (V%X = 随机数 & 0x%02X)\n", x, nn);
+                
+                // 简单随机数生成（实际应使用更好的算法）
+                static unsigned int seed = 12345;
+                seed = (seed * 1103515245 + 12345) % 0x7FFFFFFF;
+                chip8->V[x] = (seed & 0xFF) & nn;
+                chip8->pc += 2;
+            }
+            break;
+
+        // ============ Dxxx: 显示绘图 ============
+        case 0xD000: // DXYN: 绘制精灵 (DRW Vx, Vy, n)
+            {
+                uint8_t x = chip8->V[(opcode & 0x0F00) >> 8];
+                uint8_t y = chip8->V[(opcode & 0x00F0) >> 4];
+                uint8_t height = opcode & 0x000F;
+                uint8_t pixel;
+
+                printf("  执行: DXYN (在 X=%u, Y=%u 绘制 %u 行高精灵)\n", x, y, height);
+
+                chip8->V[0xF] = 0;
+
+                for (int yline = 0; yline < height; yline++) {
+                    pixel = chip8->memory[chip8->I + yline];
+                    
+                    for (int xline = 0; xline < 8; xline++) {
+                        if ((pixel & (0x80 >> xline)) != 0) {
+                            int display_x = (x + xline) % DISPLAY_WIDTH;
+                            int display_y = (y + yline) % DISPLAY_HEIGHT;
+                            int pixel_index = display_y * DISPLAY_WIDTH + display_x;
+
+                            if (chip8->display[pixel_index] == 1) {
+                                chip8->V[0xF] = 1;
+                            }
+
+                            chip8->display[pixel_index] ^= 1;
+                        }
+                    }
+                }
+
+                chip8->draw_flag = 1;
+                chip8->pc += 2;
+            }
+            break;
+
+        // ============ Exxx: 键盘输入 ============
+        case 0xE000:
+            switch (opcode & 0x00FF) {
+                case 0x009E: // EX9E: 如果按键 VX 被按下，则跳过下一条指令 (SKP Vx)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        uint8_t key_to_check = chip8->V[x];
+                        printf("  执行: EX9E (如果键0x%X按下则跳过)\n", key_to_check);
+                        
+                        if (key_to_check < 16 && chip8->key[key_to_check]) {
+                            chip8->pc += 4;  // 跳过下一条指令
+                        } else {
+                            chip8->pc += 2;  // 正常前进
+                        }
+                    }
+                    break;
+                    
+                case 0x00A1: // EXA1: 如果按键 VX 没被按下，则跳过下一条指令 (SKNP Vx)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        uint8_t key_to_check = chip8->V[x];
+                        printf("  执行: EXA1 (如果键0x%X没按下则跳过)\n", key_to_check);
+                        
+                        if (key_to_check < 16 && !chip8->key[key_to_check]) {
+                            chip8->pc += 4;
+                        } else {
+                            chip8->pc += 2;
+                        }
+                    }
+                    break;
+                    
+                default:
+                    printf("  未实现的E指令: 0x%04X\n", opcode);
+                    chip8->pc += 2;
+                    break;
+            }
+            break;
+
+        // ============ Fxxx: 杂项指令 ============
+        case 0xF000:
+            switch (opcode & 0x00FF) {
+                case 0x0007: // FX07: VX = 延迟定时器 (LD Vx, DT)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        printf("  执行: FX07 (V%X = 延迟定时器=%u)\n", x, chip8->delay_timer);
+                        chip8->V[x] = chip8->delay_timer;
+                        chip8->pc += 2;
+                    }
+                    break;
+                    
+                case 0x000A: // FX0A: 等待按键，然后存入 VX (LD Vx, K)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        printf("  执行: FX0A (等待按键存入 V%X)\n", x);
+                        
+                        // 检查是否有按键被按下
+                        uint8_t key_pressed = 0xFF;
+                        for (int i = 0; i < 16; i++) {
+                            if (chip8->key[i]) {
+                                key_pressed = i;
+                                break;
+                            }
+                        }
+                        
+                        if (key_pressed != 0xFF) {
+                            // 有按键被按下
+                            chip8->V[x] = key_pressed;
+                            chip8->pc += 2;
+                            printf("    按键 0x%X 按下，存入 V%X\n", key_pressed, x);
+                        } else {
+                            // 没有按键被按下，PC不前进，下个周期再检查
+                            printf("    等待按键中...\n");
+                        }
+                    }
+                    break;
+                    
+                case 0x0015: // FX15: 设置延迟定时器 (LD DT, Vx)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        printf("  执行: FX15 (延迟定时器 = V%X=%u)\n", x, chip8->V[x]);
+                        chip8->delay_timer = chip8->V[x];
+                        chip8->pc += 2;
+                    }
+                    break;
+                    
+                case 0x0018: // FX18: 设置声音定时器 (LD ST, Vx)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        printf("  执行: FX18 (声音定时器 = V%X=%u)\n", x, chip8->V[x]);
+                        chip8->sound_timer = chip8->V[x];
+                        chip8->pc += 2;
+                    }
+                    break;
+                    
+                case 0x001E: // FX1E: I = I + VX (ADD I, Vx)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        printf("  执行: FX1E (I = I + V%X)\n", x);
+                        chip8->I += chip8->V[x];
+                        chip8->pc += 2;
+                    }
+                    break;
+                    
+                case 0x0029: // FX29: I = 字体字符地址 (LD F, Vx)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        uint8_t digit = chip8->V[x] & 0x0F; // 只取低4位
+                        printf("  执行: FX29 (I = 字体'%X'地址=0x%03X)\n", 
+                               digit, digit * 5);
+                        chip8->I = digit * 5; // 每个字符5字节
+                        chip8->pc += 2;
+                    }
+                    break;
+                    
+                case 0x0033: // FX33: 二进制十进制转换 (LD B, Vx)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        uint8_t value = chip8->V[x];
+                        printf("  执行: FX33 (将 V%X=%u 转为BCD)\n", x, value);
+                        
+                        // 百位
+                        chip8->memory[chip8->I] = value / 100;
+                        // 十位
+                        chip8->memory[chip8->I + 1] = (value / 10) % 10;
+                        // 个位
+                        chip8->memory[chip8->I + 2] = value % 10;
+                        
+                        chip8->pc += 2;
+                    }
+                    break;
+                    
+                case 0x0055: // FX55: 保存寄存器到内存 (LD [I], Vx)
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        printf("  执行: FX55 (保存 V0-V%X 到内存)\n", x);
+                        
+                        for (int i = 0; i <= x; i++) {
+                            chip8->memory[chip8->I + i] = chip8->V[i];
+                        }
+                        
+                        chip8->pc += 2;
+                    }
+                    break;
+                    
+                case 0x0065: // FX65: 从内存加载寄存器 (LD Vx, [I])
+                    {
+                        uint8_t x = (opcode & 0x0F00) >> 8;
+                        printf("  执行: FX65 (从内存加载到 V0-V%X)\n", x);
+                        
+                        for (int i = 0; i <= x; i++) {
+                            chip8->V[i] = chip8->memory[chip8->I + i];
+                        }
+                        
+                        chip8->pc += 2;
+                    }
+                    break;
+                    
+                default:
+                    printf("  未实现的F指令: 0x%04X\n", opcode);
+                    chip8->pc += 2;
+                    break;
+            }
+            break;
+
         default:
-            printf("  尚未实现的操作码: 0x%04X\n", opcode);
-            chip8->pc += 2; // 即使未实现，也前进PC以避免死循环
+            printf("  未知指令类型: 0x%04X\n", opcode);
+            chip8->pc += 2;
             break;
     }
 }
 
-// 更新定时器 (每秒60次调用.)
+// 更新定时器（应在约60Hz的频率下调用）
 void chip8_update_timers(Chip8* chip8) {
     if (chip8->delay_timer > 0) {
         chip8->delay_timer--;
@@ -199,7 +587,8 @@ void chip8_update_timers(Chip8* chip8) {
     
     if (chip8->sound_timer > 0) {
         if (chip8->sound_timer == 1) {
-            printf("BEEP! 播放提示音\n");
+            // 这里可以触发声音播放
+            // printf("BEEP!\n");
         }
         chip8->sound_timer--;
     }
