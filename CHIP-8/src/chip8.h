@@ -43,7 +43,11 @@ typedef struct {
     uint8_t draw_flag;        // 需要重绘显示
     uint8_t key_wait;         // 等待按键按下
     uint8_t key_reg;          // 等待按键的寄存器
-
+    
+    // 随机数生成器状态
+    unsigned int random_seed; // 随机数种子
+    
+    // SDL2图形相关
     SDL_Window* window;      // 窗口
     SDL_Renderer* renderer;  // 渲染器
 } Chip8;

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "chip8.h"
 
 // CHIP-8内置字体集 (0-F, 每个字符5字节)
@@ -30,6 +31,9 @@ void chip8_init(Chip8* chip8) {
         fprintf(stderr, "错误: chip8_init 参数为空\n");
         return;
     }
+    
+    // 使用当前时间初始化随机数种子
+    chip8->random_seed = (unsigned int)time(NULL);
     
     // 清空内存
     memset(chip8->memory, 0, MEMORY_SIZE);
@@ -67,6 +71,7 @@ void chip8_init(Chip8* chip8) {
     printf("内存: 4KB, 显示: %dx%d\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
     printf("程序起始地址: 0x%03X\n", PROGRAM_START);
     printf("字体集加载到: 0x000-0x04F\n");
+    printf("随机数种子: %u\n", chip8->random_seed);
 }
 
 // 加载ROM文件
@@ -90,8 +95,7 @@ int chip8_load_rom(Chip8* chip8, const char* filename) {
     // 检查文件大小
     long max_size = MEMORY_SIZE - PROGRAM_START;
     if (file_size > max_size) {
-        fprintf(stderr, "错误: ROM文件太大 (%ld字节 > %ld字节可用)\n", 
-                file_size, max_size);
+        fprintf(stderr, "错误: ROM文件太大 (%ld字节 > %ld字节可用)\n", file_size, max_size);
         fclose(file);
         return 0;
     }
@@ -365,10 +369,9 @@ void chip8_cycle(Chip8* chip8) {
                 uint8_t nn = opcode & 0x00FF;
                 printf("  执行: CXNN (V%X = 随机数 & 0x%02X)\n", x, nn);
                 
-                // 简单随机数生成（实际应使用更好的算法）
-                static unsigned int seed = 12345;
-                seed = (seed * 1103515245 + 12345) % 0x7FFFFFFF;
-                chip8->V[x] = (seed & 0xFF) & nn;
+                // 使用线性同余生成器生成随机数
+                chip8->random_seed = (chip8->random_seed * 1103515245 + 12345) % 0x7FFFFFFF;
+                chip8->V[x] = (chip8->random_seed & 0xFF) & nn;
                 chip8->pc += 2;
             }
             break;
@@ -386,6 +389,13 @@ void chip8_cycle(Chip8* chip8) {
                 chip8->V[0xF] = 0;
 
                 for (int yline = 0; yline < height; yline++) {
+                    // 检查内存边界
+                    if (chip8->I + yline >= MEMORY_SIZE) {
+                        printf("  警告: 精灵数据越界，I+yline=0x%03X >= 0x%03X\n", 
+                               chip8->I + yline, MEMORY_SIZE);
+                        break;
+                    }
+                    
                     pixel = chip8->memory[chip8->I + yline];
                     
                     for (int xline = 0; xline < 8; xline++) {
@@ -528,6 +538,14 @@ void chip8_cycle(Chip8* chip8) {
                         uint8_t value = chip8->V[x];
                         printf("  执行: FX33 (将 V%X=%u 转为BCD)\n", x, value);
                         
+                        // 检查内存边界
+                        if (chip8->I + 2 >= MEMORY_SIZE) {
+                            printf("  错误: FX33内存越界，I+2=0x%03X >= 0x%03X\n", 
+                                   chip8->I + 2, MEMORY_SIZE);
+                            chip8->pc += 2;
+                            break;
+                        }
+                        
                         // 百位
                         chip8->memory[chip8->I] = value / 100;
                         // 十位
@@ -544,6 +562,14 @@ void chip8_cycle(Chip8* chip8) {
                         uint8_t x = (opcode & 0x0F00) >> 8;
                         printf("  执行: FX55 (保存 V0-V%X 到内存)\n", x);
                         
+                        // 检查内存边界
+                        if (chip8->I + x >= MEMORY_SIZE) {
+                            printf("  错误: FX55内存越界，I+%u=0x%03X >= 0x%03X\n", 
+                                   x, chip8->I + x, MEMORY_SIZE);
+                            chip8->pc += 2;
+                            break;
+                        }
+                        
                         for (int i = 0; i <= x; i++) {
                             chip8->memory[chip8->I + i] = chip8->V[i];
                         }
@@ -556,6 +582,14 @@ void chip8_cycle(Chip8* chip8) {
                     {
                         uint8_t x = (opcode & 0x0F00) >> 8;
                         printf("  执行: FX65 (从内存加载到 V0-V%X)\n", x);
+                        
+                        // 检查内存边界
+                        if (chip8->I + x >= MEMORY_SIZE) {
+                            printf("  错误: FX65内存越界，I+%u=0x%03X >= 0x%03X\n", 
+                                   x, chip8->I + x, MEMORY_SIZE);
+                            chip8->pc += 2;
+                            break;
+                        }
                         
                         for (int i = 0; i <= x; i++) {
                             chip8->V[i] = chip8->memory[chip8->I + i];
@@ -587,8 +621,8 @@ void chip8_update_timers(Chip8* chip8) {
     
     if (chip8->sound_timer > 0) {
         if (chip8->sound_timer == 1) {
-            // 这里可以触发声音播放
-            // printf("BEEP!\n");
+            //这里可以触发声音播放
+            printf("BEEP!\n");
         }
         chip8->sound_timer--;
     }
@@ -649,10 +683,10 @@ void chip8_graphics_update(Chip8* chip8) {
     // 2. 设置绘制颜色为白色（前景/像素）
     SDL_SetRenderDrawColor(chip8->renderer, 255, 255, 255, 255); // 白色像素
     
-    // 3. 遍历CHIP-8的显示缓冲区(64x32)，将“点亮”的像素绘制到窗口
+    // 3. 遍历CHIP-8的显示缓冲区(64x32)，将"点亮"的像素绘制到窗口
     for (int y = 0; y < DISPLAY_HEIGHT; y++) {
         for (int x = 0; x < DISPLAY_WIDTH; x++) {
-            // 如果该像素为“开”(值为1)
+            // 如果该像素为"开"(值为1)
             if (chip8->display[y * DISPLAY_WIDTH + x]) {
                 // 计算放大后的矩形位置和大小
                 SDL_Rect pixel_rect = {
