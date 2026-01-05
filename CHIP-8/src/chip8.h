@@ -15,6 +15,19 @@
 #define WINDOW_WIDTH (DISPLAY_WIDTH * WINDOW_SCALE)
 #define WINDOW_HEIGHT (DISPLAY_HEIGHT * WINDOW_SCALE)
 
+// 音频常量
+#define AUDIO_FREQUENCY 44100  // 音频采样率 (44.1kHz)
+#define AUDIO_FORMAT AUDIO_S16SYS  // 音频格式 (16位有符号整数)
+#define AUDIO_CHANNELS 1       // 单声道
+#define AUDIO_SAMPLES 4096     // 音频缓冲区大小
+#define BEEP_FREQUENCY 800     // 蜂鸣频率 (800Hz)
+#define BEEP_VOLUME 3000       // 蜂鸣音量
+
+// 动画速度控制常量
+#define ANIMATION_MIN_SPEED 1      // 最小动画速度 (最慢)
+#define ANIMATION_MAX_SPEED 20     // 最大动画速度 (最快)
+#define ANIMATION_DEFAULT_SPEED 10 // 默认动画速度
+
 // CPU结构体
 typedef struct {
     // 内存
@@ -50,6 +63,11 @@ typedef struct {
     // SDL2图形相关
     SDL_Window* window;      // 窗口
     SDL_Renderer* renderer;  // 渲染器
+    
+    // SDL2音频相关
+    SDL_AudioDeviceID audio_device;  // 音频设备ID
+    int audio_initialized;           // 音频初始化标志
+    double audio_phase;              // 音频相位（用于生成正弦波）
 } Chip8;
 
 // 函数声明
@@ -60,5 +78,7 @@ void chip8_update_timers(Chip8* chip8);
 int chip8_graphics_init(Chip8* chip8);    // 初始化图形
 void chip8_graphics_update(Chip8* chip8); // 更新图形显示
 void chip8_graphics_cleanup(Chip8* chip8);// 清理图形资源
+int chip8_audio_init(Chip8* chip8);       // 初始化音频
+void chip8_audio_cleanup(Chip8* chip8);   // 清理音频资源
 
 #endif // CHIP8_H

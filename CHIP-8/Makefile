@@ -13,7 +13,7 @@ LIB_PATH = -L$(SDL_DIR)/x86_64-w64-mingw32/lib
 # ============ 编译与链接标志 ============
 ALL_CFLAGS = $(CFLAGS) $(INC_PATH)
 # 注意链接库顺序：-lmingw32 必须在最前
-ALL_LDFLAGS = $(LIB_PATH) -lmingw32 -lSDL2main -lSDL2
+ALL_LDFLAGS = $(LIB_PATH) -lmingw32 -lSDL2main -lSDL2 -lm
 
 # ============ 项目文件 ============
 SRC_DIR = src
