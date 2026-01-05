@@ -11,7 +11,7 @@
 #define DISPLAY_HEIGHT 32    // 显示高度
 
 // 图形显示常量
-#define WINDOW_SCALE 10 // 窗口缩放倍数 (CHIP-8原始分辨率64x32，放大10倍后为640x320)
+#define WINDOW_SCALE 10 
 #define WINDOW_WIDTH (DISPLAY_WIDTH * WINDOW_SCALE)
 #define WINDOW_HEIGHT (DISPLAY_HEIGHT * WINDOW_SCALE)
 
