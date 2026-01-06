@@ -23,10 +23,10 @@
 #define BEEP_FREQUENCY 800     // 蜂鸣频率 (800Hz)
 #define BEEP_VOLUME 3000       // 蜂鸣音量
 
-// 动画速度控制常量
-#define ANIMATION_MIN_SPEED 1      // 最小动画速度 (最慢) - 对应30FPS
-#define ANIMATION_MAX_SPEED 20     // 最大动画速度 (最快) - 对应120FPS
-#define ANIMATION_DEFAULT_SPEED 10 // 默认动画速度 - 对应60FPS
+// CPU执行速度控制 (指令/秒)
+#define CPU_MIN_SPEED 100      // 最小CPU速度 (100指令/秒)
+#define CPU_MAX_SPEED 2000     // 最大CPU速度 (2000指令/秒)
+#define CPU_DEFAULT_SPEED 500  // 默认CPU速度 (500指令/秒)
 
 // CPU结构体
 typedef struct {

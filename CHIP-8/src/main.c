@@ -5,16 +5,17 @@
 #include <SDL2/SDL_timer.h>
 #include "chip8.h"
 
-// 动画速度控制
-static int animation_speed = ANIMATION_DEFAULT_SPEED; // 动画速度 (1-20)
-static int frame_counter = 0;                         // 帧计数器
-static Uint32 last_fps_time = 0;                      // 上次计算FPS的时间
-static int frame_count_since_last = 0;                // 上次计算FPS以来的帧数
-static float current_fps = 0.0f;                      // 当前FPS
+// 游戏速度控制
+static int game_speed = CPU_DEFAULT_SPEED;  // 游戏速度 (指令/秒)
+static int frame_counter = 0;              // 帧计数器
+static Uint32 last_fps_time = 0;           // 上次计算FPS的时间
+static int frame_count_since_last = 0;     // 上次计算FPS以来的帧数
+static float current_fps = 0.0f;           // 当前FPS
+static Uint32 last_cycle_time = 0;         // 上次执行CPU周期的时间
+static float cycle_accumulator = 0.0f;     // 累积的时间（用于CPU周期）
 
 // 函数声明
-int get_graphics_refresh_interval(void);
-void change_animation_speed(int delta);
+void change_game_speed(int delta);
 void handle_key_event(Chip8* chip8, SDL_KeyboardEvent* key);
 void update_fps_display(void);
 int load_and_run_rom(Chip8* chip8, const char* rom_path);
@@ -60,51 +61,59 @@ int load_and_run_rom(Chip8* chip8, const char* rom_path) {
     
     printf("ROM加载成功: %s\n", rom_path);
     printf("文件路径: %s\n", rom_path);
-    printf("按 ESC 键退出, 按 O/P 键调整动画速度\n");
+    printf("按 ESC 键退出, 按 O/P 键调整游戏速度\n");
     
     return 1;
 }
 
-// 改变动画速度
-void change_animation_speed(int delta) {
-    int old_speed = animation_speed;
-    animation_speed += delta;
+// 改变游戏速度
+void change_game_speed(int delta) {
+    int old_speed = game_speed;
+    
+    // 逐步调整速度：100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000
+    if (delta > 0) {
+        // 加速
+        if (game_speed < 1000) {
+            game_speed += 100;
+        } else {
+            game_speed = 2000;  // 从1000直接到2000
+        }
+    } else {
+        // 减速
+        if (game_speed > 100) {
+            if (game_speed == 2000) {
+                game_speed = 1000;
+            } else {
+                game_speed -= 100;
+            }
+        }
+    }
     
     // 限制速度范围
-    if (animation_speed < ANIMATION_MIN_SPEED) {
-        animation_speed = ANIMATION_MIN_SPEED;
+    if (game_speed < CPU_MIN_SPEED) {
+        game_speed = CPU_MIN_SPEED;
     }
-    if (animation_speed > ANIMATION_MAX_SPEED) {
-        animation_speed = ANIMATION_MAX_SPEED;
+    if (game_speed > CPU_MAX_SPEED) {
+        game_speed = CPU_MAX_SPEED;
     }
     
     // 如果速度改变了，打印消息
-    if (old_speed != animation_speed) {
-        int interval = get_graphics_refresh_interval();
-        float target_fps = 1000.0f / interval;
-        
-        printf("动画速度改变: %d -> %d (O=加速动画, P=减速动画)\n", old_speed, animation_speed);
-        printf("当前图形刷新间隔: %dms (目标FPS: %.1f)\n", interval, target_fps);
+    if (old_speed != game_speed) {
+        printf("游戏速度改变: %d -> %d 指令/秒 (O=减速, P=加速)\n", old_speed, game_speed);
+        printf("速度级别: ");
+        if (game_speed == 100) printf("极慢");
+        else if (game_speed == 200) printf("很慢");
+        else if (game_speed == 300) printf("慢");
+        else if (game_speed == 400) printf("较慢");
+        else if (game_speed == 500) printf("正常");
+        else if (game_speed == 600) printf("较快");
+        else if (game_speed == 700) printf("快");
+        else if (game_speed == 800) printf("很快");
+        else if (game_speed == 900) printf("极快");
+        else if (game_speed == 1000) printf("超快");
+        else if (game_speed == 2000) printf("极限");
+        printf("\n");
     }
-}
-
-// 计算当前图形刷新间隔（毫秒）
-int get_graphics_refresh_interval(void) {
-    // 计算动画速度对应的FPS (30-120FPS)
-    float fps;
-    
-    // 动画速度1-20对应30-120FPS（线性映射）
-    fps = 30.0f + (animation_speed - 1) * (90.0f / 19.0f);
-    
-    // 计算间隔（毫秒）
-    int interval = (int)(1000.0f / fps);
-    
-    // 确保间隔至少为1毫秒（对应1000FPS，这是实际限制）
-    if (interval < 1) {
-        interval = 1;
-    }
-    
-    return interval;
 }
 
 // 键盘映射：将PC键盘按键映射到CHIP-8的16键键盘
@@ -152,19 +161,19 @@ void handle_key_event(Chip8* chip8, SDL_KeyboardEvent* key) {
             }
             break;
             
-        // O键加速动画
+        // O键减速
         case SDLK_o:
             if (key->type == SDL_KEYDOWN) {
-                printf("=== 加速动画 ===\n");
-                change_animation_speed(1);  // 增加动画速度
+                printf("=== 减速 ===\n");
+                change_game_speed(-1);  // 降低游戏速度
             }
             break;
             
-        // P键减速动画
+        // P键加速
         case SDLK_p:
             if (key->type == SDL_KEYDOWN) {
-                printf("=== 减速动画 ===\n");
-                change_animation_speed(-1);  // 降低动画速度
+                printf("=== 加速 ===\n");
+                change_game_speed(1);  // 增加游戏速度
             }
             break;
             
@@ -192,9 +201,6 @@ void update_fps_display(void) {
 }
 
 int main(int argc, char* argv[]) {
-    printf("CHIP-8 模拟器 (支持ROM文件拖放)\n");
-    printf("===================================\n");
-    
     // 初始化CHIP-8
     Chip8 chip8;
     chip8_init(&chip8);
@@ -228,23 +234,9 @@ int main(int argc, char* argv[]) {
     }
     
     printf("图形系统初始化成功\n");
-    printf("控制说明:\n");
-    printf("  W/A/S/D - 上/左/下/右移动\n");
-    printf("  R       - 重置位置\n");
-    printf("  B       - 测试蜂鸣声（短蜂鸣）\n");
-    printf("  O       - 加速动画 (增加图形刷新速度)\n");
-    printf("  P       - 减速动画 (降低图形刷新速度)\n");
-    printf("  ESC     - 退出程序\n");
-    printf("\n");
-    
-    // 显示初始动画速度信息
-    int initial_interval = get_graphics_refresh_interval();
-    float initial_fps = 1000.0f / initial_interval;
-    printf("当前动画速度: %d/%d (1=30FPS, 10=60FPS, 20=120FPS)\n", 
-           animation_speed, ANIMATION_MAX_SPEED);
-    printf("当前图形刷新间隔: %dms (目标FPS: %.1f)\n", initial_interval, initial_fps);
-    printf("CPU模拟速度保持恒定 (标准CHIP-8速度)\n");
-    printf("按 O 和 P 键可实时调整动画速度\n");
+    printf("初始游戏速度: %d 指令/秒\n", game_speed);
+    printf("游戏速度范围: %d-%d 指令/秒 (O=减速, P=加速)\n", CPU_MIN_SPEED, CPU_MAX_SPEED);
+    printf("速度级别: 100=极慢, 200=很慢, 300=慢, 400=较慢, 500=正常, 600=较快, 700=快, 800=很快, 900=极快, 1000=超快, 2000=极限\n");
     
     // 如果提供了命令行参数，尝试加载ROM
     int rom_loaded = 0;
@@ -265,16 +257,13 @@ int main(int argc, char* argv[]) {
     int is_running = 1;
     SDL_Event event;
     
-    // 用于控制CPU执行速度的计时器
-    Uint32 cpu_last_time = SDL_GetTicks();
-    Uint32 cpu_accumulator = 0;
-    const Uint32 cpu_target_interval = 2; // CPU每2ms执行一次 (约500Hz)
-    
-    // 用于控制图形刷新速度的计时器
-    Uint32 graphics_last_time = SDL_GetTicks();
-    
-    // 初始化FPS计时
+    // 初始化计时器
+    last_cycle_time = SDL_GetTicks();
     last_fps_time = SDL_GetTicks();
+    
+    // 定时器更新计数器（60Hz）
+    static int timer_counter = 0;
+    static Uint32 last_timer_update = 0;
     
     while (is_running) {
         Uint32 current_time = SDL_GetTicks();
@@ -308,6 +297,11 @@ int main(int argc, char* argv[]) {
                         // 加载并运行ROM
                         if (load_and_run_rom(&chip8, dropped_file_path)) {
                             rom_loaded = 1;
+                            // 重置所有计时器
+                            last_cycle_time = current_time;
+                            last_timer_update = current_time;
+                            cycle_accumulator = 0.0f;
+                            timer_counter = 0;
                         } else {
                             printf("加载ROM失败，请检查文件格式和路径\n");
                         }
@@ -326,35 +320,42 @@ int main(int argc, char* argv[]) {
             }
         }
         
-        // 2. CPU执行（固定频率，不受动画速度影响）
-        // 只有在已加载ROM时才执行CPU周期
+        // 2. CPU执行（根据游戏速度控制）
         if (rom_loaded) {
-            cpu_accumulator += (current_time - cpu_last_time);
-            cpu_last_time = current_time;
+            // 计算经过的时间（秒）
+            Uint32 elapsed_ms = current_time - last_cycle_time;
+            float elapsed_seconds = elapsed_ms / 1000.0f;
             
-            // 每2ms执行一次CPU周期
-            while (cpu_accumulator >= cpu_target_interval) {
-                // 执行CPU周期（固定速度）
+            // 根据游戏速度计算应该执行的CPU周期数
+            // game_speed是每秒执行的指令数
+            // elapsed_seconds是经过的时间（秒）
+            // 所以应该执行的周期数 = 速度 * 时间
+            float cycles_to_execute = game_speed * elapsed_seconds;
+            
+            // 累积到累加器中
+            cycle_accumulator += cycles_to_execute;
+            
+            // 执行整数个CPU周期
+            while (cycle_accumulator >= 1.0f) {
                 chip8_cycle(&chip8);
-                
-                // 更新定时器（60Hz）- 每8个CPU周期更新一次
-                static int timer_counter = 0;
-                if (++timer_counter >= 8) {
-                    chip8_update_timers(&chip8);
-                    timer_counter = 0;
-                }
-                
-                cpu_accumulator -= cpu_target_interval;
+                cycle_accumulator -= 1.0f;
+                timer_counter++;
+            }
+            
+            last_cycle_time = current_time;
+            
+            // 3. 定时器更新（固定60Hz）
+            // 每16.67ms更新一次定时器（60Hz）
+            if (current_time - last_timer_update >= 16) {  // 约60Hz
+                // 更新定时器（60Hz）
+                chip8_update_timers(&chip8);
+                last_timer_update = current_time;
             }
         }
         
-        // 3. 图形刷新（受动画速度控制）
-        int refresh_interval = get_graphics_refresh_interval();
-        Uint32 graphics_elapsed = current_time - graphics_last_time;
-        
-        // 修复警告：比较有符号和无符号整数
-        if (graphics_elapsed >= (Uint32)refresh_interval) {
-            // 更新显示
+        // 4. 图形刷新（固定60Hz）
+        static Uint32 last_graphics_update = 0;
+        if (current_time - last_graphics_update >= 16) {  // 约60Hz
             if (chip8.draw_flag && rom_loaded) {
                 chip8_graphics_update(&chip8);
                 chip8.draw_flag = 0;
@@ -363,21 +364,17 @@ int main(int argc, char* argv[]) {
                 
                 // 每60帧显示一次状态
                 if (frame_counter % 60 == 0) {
-                    int interval = get_graphics_refresh_interval();
-                    float target_fps = 1000.0f / interval;
-                    printf("运行状态: 帧数=%d, PC=0x%03X, 声音定时器=%u, 动画速度=%d/%d, 目标FPS=%.1f, 实际FPS=%.1f\n", 
-                           frame_counter, chip8.pc, chip8.sound_timer, 
-                           animation_speed, ANIMATION_MAX_SPEED, target_fps, current_fps);
+                    printf("运行状态: 帧数=%d, PC=0x%03X, 声音定时器=%u, 游戏速度=%d指令/秒, 实际FPS=%.1f\n", 
+                           frame_counter, chip8.pc, chip8.sound_timer, game_speed, current_fps);
                 }
             }
-            
-            graphics_last_time = current_time;
+            last_graphics_update = current_time;
             
             // 更新FPS显示
             update_fps_display();
         }
         
-        // 4. 短暂延迟以避免过度占用CPU
+        // 5. 短暂延迟以避免过度占用CPU
         SDL_Delay(1);
     }
     
