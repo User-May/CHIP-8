@@ -233,7 +233,6 @@ void chip8_cycle(Chip8* chip8) {
                     break;
                     
                 default:
-                    // SYS addr - 现代模拟器通常忽略
                     chip8->pc += 2;
                     break;
             }
@@ -675,7 +674,6 @@ void chip8_update_timers(Chip8* chip8) {
     }
 }
 
-// 初始化SDL2图形系统
 int chip8_graphics_init(Chip8* chip8) {
     if (!chip8) return 0;
     
@@ -688,10 +686,10 @@ int chip8_graphics_init(Chip8* chip8) {
     // 2. 创建窗口
     chip8->window = SDL_CreateWindow(
         "CHIP-8",               // 窗口标题
-        SDL_WINDOWPOS_CENTERED,        // 初始X位置
-        SDL_WINDOWPOS_CENTERED,        // 初始Y位置
-        WINDOW_WIDTH,                  // 窗口宽度
-        WINDOW_HEIGHT,                 // 窗口高度
+        SDL_WINDOWPOS_CENTERED,        // 初始X
+        SDL_WINDOWPOS_CENTERED,        // 初始Y
+        WINDOW_WIDTH,                  // 宽度
+        WINDOW_HEIGHT,                 // 高度
         SDL_WINDOW_SHOWN               // 显示窗口标志
     );
     
@@ -701,11 +699,11 @@ int chip8_graphics_init(Chip8* chip8) {
         return 0;
     }
     
-    // 3. 创建渲染器（用于绘制）
+    // 3. 创建渲染器（用于绘制）- 移除VSync以便自由控制帧率
     chip8->renderer = SDL_CreateRenderer(
         chip8->window,
         -1,                            // 使用第一个可用的渲染驱动
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+        SDL_RENDERER_ACCELERATED       // 移除SDL_RENDERER_PRESENTVSYNC
     );
     
     if (!chip8->renderer) {

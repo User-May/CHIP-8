@@ -4,14 +4,14 @@
 #include <stdint.h>
 #include <SDL2/SDL.h>
 
-// 内存大小 - 4KB (4096 bytes)
+// 内存大小 - 4KB
 #define MEMORY_SIZE 4096
-#define PROGRAM_START 0x200  // CHIP-8程序起始地址
-#define DISPLAY_WIDTH 64     // 显示宽度
-#define DISPLAY_HEIGHT 32    // 显示高度
+#define PROGRAM_START 0x200  // 程序起始地址
+#define DISPLAY_WIDTH 64     // 宽度
+#define DISPLAY_HEIGHT 32    // 高度
 
 // 图形显示常量
-#define WINDOW_SCALE 10 // 窗口缩放倍数 (CHIP-8原始分辨率64x32，放大10倍后为640x320)
+#define WINDOW_SCALE 10 // 缩放倍数
 #define WINDOW_WIDTH (DISPLAY_WIDTH * WINDOW_SCALE)
 #define WINDOW_HEIGHT (DISPLAY_HEIGHT * WINDOW_SCALE)
 
@@ -24,9 +24,9 @@
 #define BEEP_VOLUME 3000       // 蜂鸣音量
 
 // 动画速度控制常量
-#define ANIMATION_MIN_SPEED 1      // 最小动画速度 (最慢)
-#define ANIMATION_MAX_SPEED 20     // 最大动画速度 (最快)
-#define ANIMATION_DEFAULT_SPEED 10 // 默认动画速度
+#define ANIMATION_MIN_SPEED 1      // 最小动画速度 (最慢) - 对应30FPS
+#define ANIMATION_MAX_SPEED 20     // 最大动画速度 (最快) - 对应120FPS
+#define ANIMATION_DEFAULT_SPEED 10 // 默认动画速度 - 对应60FPS
 
 // CPU结构体
 typedef struct {
